@@ -1,6 +1,6 @@
 # Pivoting 
 
-Tags : #portforwarding #ssh #sshuttle #chisel
+Tags : #portforwarding #ssh #sshuttle #chisel #metasploit #autoroute #routeadd #socks #socks5 #socks4a 
 
 Before starting you need to enable port forwarding option in your kali linux box else no method will work
 
